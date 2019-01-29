@@ -1,0 +1,87 @@
+﻿/*
+	**The program is still not able to run although there's no syntax error. Please fix it before adding any new features.**
+	**Naming of variables is not fixed. Feel to free to change it if you have a better name.**
+	Problems:
+		1. The network is not modeled. So varification of network down is hard to implement.
+		2. If we only store the last block of each node's chain, it's hard to model DOUBLE PRODUCTION.
+		3. [For MALICIOUS BLOCK and MAJORITY MALICIOUS] How honest nodes identify malicious node? How to identify whether a chain contains any blocks not created in correct timeslot?
+		4. How to model/check consensus? 
+	Improvements:
+		1. Good if can store the linkedlist using a c# library. But hard to implement as we need to decide what to be included
+		   in the state. So maybe after implementing all features we try to change it.
+	Features-to-implement:
+		1. Model the network.
+		2. Model MINORITY FORK using assertion.
+		3. Fix the way of storing the last block and model DOUBLE PRODUCTION.
+		4. Model NETWORK FRAGMENTATION.
+		5. Model MALICIOUS BLOCK and MAJORITY MALICIOUS
+*/
+
+#define number_of_ticks 30;
+#define number_of_nodes 3;
+#define turnof(i) (globalTime % number_of_nodes == i);
+#define previousNode(i) (i + number_of_nodes - 1) % number_of_nodes;
+#define honest -1;
+#define malicious -2;
+
+var blockPool[number_of_ticks * number_of_nodes * 2][2]; //second dim meaning: 0: last block in the chain, 1: owner of the block
+var nextSlot = 1;
+
+var firstBlock[number_of_nodes];
+var chainLength[number_of_nodes];
+var finished[number_of_nodes];
+
+var globalTime = 0;
+
+var processHonesty = [honest(number_of_nodes)];
+
+node(i) = 
+	[processHonesty[i] == honest && (globalTime % number_of_nodes == i) && finished[i] == 0]createBlock.i{
+			blockPool[nextSlot][1] = i;
+			var k = 0;
+			var maxLength = chainLength[i];
+			var longestChain = firstBlock[i];
+			while (k < number_of_nodes) {
+				if (chainLength[k] > maxLength) {
+					maxLength = chainLength[k];
+					longestChain = firstBlock[k];
+				}
+			}
+			blockPool[nextSlot][0] = longestChain;
+			chainLength[i] = maxLength + 1;
+			finished[i] = 1;
+			nextSlot++;
+		} -> node(i)
+		[]
+	[processHonesty[i] == honest && !(globalTime % number_of_nodes == i) && finished[i] == 0]updateChain.i{
+			var k = 0;
+			var maxLength = chainLength[i];
+			var longestChain = firstBlock[i];
+			while (k < number_of_nodes) {
+				if (chainLength[k] > maxLength) {
+					maxLength = chainLength[k];
+					longestChain = firstBlock[k];
+				}
+			}
+			chainLength[i] = maxLength;
+			firstBlock[i] = longestChain;
+			finished[i] = 1;
+		} -> node(i);
+
+timer() = 
+	[(&& i:{0..number_of_nodes - 1}@(finished[i] == 1)) && globalTime < number_of_ticks]updateTime{
+			var k = 0;
+			while (k < number_of_nodes) {
+				finished[i] = 0;
+			}
+			globalTime++;
+		} -> timer()
+		[]
+	[globalTime == number_of_ticks]Stop();
+		
+system = (|||i:{0..number_of_nodes - 1} @ (node(i))) ||| timer();
+
+#define finishNormally (globalTime == number_of_ticks); 
+
+#assert system deadlockfree;
+#assert system reaches finishNormally;
