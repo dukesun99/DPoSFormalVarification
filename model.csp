@@ -17,14 +17,14 @@
 		5. Model MALICIOUS BLOCK and MAJORITY MALICIOUS
 */
 
-#define number_of_ticks 30;
+#define number_of_ticks 1;
 #define number_of_nodes 3;
 #define turnof(i) (globalTime % number_of_nodes == i);
 #define previousNode(i) (i + number_of_nodes - 1) % number_of_nodes;
 #define honest -1;
 #define malicious -2;
 
-var blockPool[number_of_ticks * number_of_nodes * 2][2]; //second dim meaning: 0: last block in the chain, 1: owner of the block
+var blockPool[number_of_ticks * number_of_nodes * 2 + 10][2]; //second dim meaning: 0: last block in the chain, 1: owner of the block
 var nextSlot = 1;
 
 var firstBlock[number_of_nodes];
@@ -46,6 +46,7 @@ node(i) =
 					maxLength = chainLength[k];
 					longestChain = firstBlock[k];
 				}
+				k = k + 1;
 			}
 			blockPool[nextSlot][0] = longestChain;
 			chainLength[i] = maxLength + 1;
@@ -62,6 +63,7 @@ node(i) =
 					maxLength = chainLength[k];
 					longestChain = firstBlock[k];
 				}
+				k = k + 1;
 			}
 			chainLength[i] = maxLength;
 			firstBlock[i] = longestChain;
@@ -73,6 +75,7 @@ timer() =
 			var k = 0;
 			while (k < number_of_nodes) {
 				finished[i] = 0;
+				k = k + 1;
 			}
 			globalTime++;
 		} -> timer()

@@ -1,0 +1,41 @@
+﻿
+#define number_of_ticks 1;
+#define number_of_nodes 3;
+#define honest -1;
+#define malicious -2;
+
+#alphabet timer {tick};
+#alphabet node {readytosync, tick};
+
+var blockPool[number_of_ticks * number_of_nodes * 2];
+var nextSlot = 1;
+
+var firstBlock[number_of_nodes];
+var chainLength[number_of_nodes];
+//var finished[number_of_nodes];
+
+var globalTime = 0;
+
+var processHonesty = [honest(number_of_nodes)];
+
+node(i) = 
+	[globalTime % number_of_nodes == i](produceblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+	} -> readytosync -> timer(i))
+	[]
+	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
+		firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+		chainLength[i]++;
+	} -> timer(i));
+
+
+
+timer(i) = 
+		[i == 0] (tick -> increment{globalTime++;} -> tick -> node(i))
+			[]
+		[i != 0] (tick -> tick -> node(i));
+		
+system = (||i:{0..number_of_nodes - 1} @ (node(i)));
