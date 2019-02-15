@@ -7,6 +7,7 @@
 #alphabet timer {tick};
 #alphabet node {readytosync, tick};
 #alphabet node_forker {readytosync, tick};
+#alphabet node_doubleproducer {readytosync, tick};
 
 var blockPool[number_of_ticks * number_of_nodes * 2];
 var nextSlot = 1;
@@ -14,6 +15,8 @@ var nextSlot = 1;
 var firstBlock[number_of_nodes];
 var chainLength[number_of_nodes];
 //var finished[number_of_nodes];
+var forkChainFirstBlock[number_of_nodes];
+var forkChainLength[number_of_nodes];
 
 var globalTime = 0;
 
@@ -68,7 +71,40 @@ timer_forker(i) =
 	
 system_minorityfork = node(0) || node(1) || node_forker(2);
 #define honestconsensus (firstBlock[0] == firstBlock[1]) && (globalTime == number_of_ticks);
-#define honestwinlongestchain (firstBlock[0] == firstBlock[1]) && (chainLength[0] > chainLength[2]) && (globalTime == number_of_ticks);
+#define honestwinlongestchain (firstBlock[0] == firstBlock[1]) && (chainLength[0] > chainLength[2] && chainLength[0] > forkChainLength[2]) && (globalTime == number_of_ticks);
 #assert system_minorityfork reaches allconsensus;
 #assert system_minorityfork reaches honestconsensus;
 #assert system_minorityfork reaches honestwinlongestchain;
+
+node_doubleproducer(i) = 
+	[globalTime % number_of_nodes == i](produceblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+	} -> produceforkblock.i{
+		blockPool[nextSlot] = forkChainFirstBlock[i];
+		forkChainFirstBlock[i] = nextSlot;
+		nextSlot++;
+		forkChainLength[i]++;
+	} -> readytosync -> timer_doubleproducer(i))
+	[]
+	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
+		if (globalTime < 3) {
+			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+			chainLength[i]++;
+			
+			forkChainFirstBlock[i] = firstBlock[globalTime % number_of_nodes];
+			forkChainLength[i]++;
+		}
+	} -> timer_doubleproducer(i));
+	
+timer_doubleproducer(i) = 
+		[i == 0 && globalTime < number_of_ticks] (tick -> increment{globalTime++;} -> tick -> node_doubleproducer(i))
+			[]
+		[i != 0 && globalTime < number_of_ticks] (tick -> tick -> node_doubleproducer(i));
+		
+system_doubleproduction = node(0) || node(1) || node_doubleproducer(2);
+#assert system_doubleproduction reaches allconsensus;
+#assert system_doubleproduction reaches honestconsensus;
+#assert system_doubleproduction reaches honestwinlongestchain;
