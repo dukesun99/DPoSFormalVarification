@@ -1,5 +1,5 @@
 ﻿
-#define number_of_ticks 10;
+#define number_of_ticks 20;
 #define number_of_nodes 3;
 #define honest -1;
 #define malicious -2;
@@ -8,6 +8,7 @@
 #alphabet node {readytosync, tick};
 #alphabet node_forker {readytosync, tick};
 #alphabet node_doubleproducer {readytosync, tick};
+#alphabet node_networkfragmentation {readytosync, tick};
 
 var blockPool[number_of_ticks * number_of_nodes * 2];
 var nextSlot = 1;
@@ -59,8 +60,10 @@ node_forker(i) =
 	[]
 	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
 		if (globalTime < 3) {
-			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
-			chainLength[i]++;
+			if (chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+				firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+				chainLength[i]++;
+			}
 		}
 	} -> timer_forker(i));
 	
@@ -91,11 +94,15 @@ node_doubleproducer(i) =
 	[]
 	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
 		if (globalTime < 3) {
-			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
-			chainLength[i]++;
+			if (chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+				firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+				chainLength[i]++;
+			}
 			
-			forkChainFirstBlock[i] = firstBlock[globalTime % number_of_nodes];
-			forkChainLength[i]++;
+			if (forkChainLength[i] < chainLength[globalTime % number_of_nodes]) {
+				forkChainFirstBlock[i] = firstBlock[globalTime % number_of_nodes];
+				forkChainLength[i]++;
+			}
 		}
 	} -> timer_doubleproducer(i));
 	
@@ -108,3 +115,28 @@ system_doubleproduction = node(0) || node(1) || node_doubleproducer(2);
 #assert system_doubleproduction reaches allconsensus;
 #assert system_doubleproduction reaches honestconsensus;
 #assert system_doubleproduction reaches honestwinlongestchain;
+
+node_networkfragmentation(i) = 
+	[globalTime % number_of_nodes == i](produceblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+	} -> readytosync -> timer_networkfragmentation(i))
+	[]
+	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
+		if (globalTime < 3 || globalTime > 8) {
+			if (chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+				firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+				chainLength[i]++;
+			}
+		}
+	} -> timer_networkfragmentation(i));
+	
+timer_networkfragmentation(i) = 
+		[i == 0 && globalTime < number_of_ticks] (tick -> increment{globalTime++;} -> tick -> node_networkfragmentation(i))
+			[]
+		[i != 0 && globalTime < number_of_ticks] (tick -> tick -> node_networkfragmentation(i));
+		
+system_networkfragmentation = (||i:{0..number_of_nodes - 1} @ (node_networkfragmentation(i)));
+#assert system_networkfragmentation reaches allconsensus;
