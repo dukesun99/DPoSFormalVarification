@@ -17,6 +17,7 @@ var chains_length[num_of_ledgers] = [1, 1, 1];
 copychain(from, to, counter, length) = 
     [counter < length]copyBlock.from.to.counter{
         chains[to][counter] = chains[from][counter];
+
     } -> copychain(from, to, counter + 1, length);
     
 node(i) = 
@@ -27,17 +28,20 @@ node(i) =
         next++;
     } -> readyforothers -> readyfortimer -> timer(i))
     []
-    [current_time % num_of_ledgers != i]readyforothers -> (update.i{
-        //Current chain length < longest chain length
-        if (chains_length[i] < chains_length[current_time % num_of_ledgers]) {
-            if(chains[i][chains_length[i] - 1] == chains[i][chains_length[current_time % num_of_ledgers] - 2]) {
-                //chains[i][chains_length[i]] = chains[i][chains_length[current_time % num_of_ledgers] - 1];
-                copychain(current_time % num_of_ledgers, i, 0, chains_length[current_time % num_of_ledgers]);
-            }
-            chains_length[i] = chains_length[current_time % num_of_ledgers];
-  
-        }
-    } -> readyfortimer -> timer(i));
+    [current_time % num_of_ledgers != i]readyforothers -> 
+        copychain(current_time % num_of_ledgers, i, 0, chains_length[current_time % num_of_ledgers])
+        -> readyfortimer -> timer(i);
+//    (update.i{
+//        //Current chain length < longest chain length
+//        if (chains_length[i] < chains_length[current_time % num_of_ledgers]) {
+//            if(chains[i][chains_length[i] - 1] == chains[i][chains_length[current_time % num_of_ledgers] - 2]) {
+//                //chains[i][chains_length[i]] = chains[i][chains_length[current_time % num_of_ledgers] - 1];
+//                copychain(current_time % num_of_ledgers, i, 0, chains_length[current_time % num_of_ledgers]);
+//            }
+//            chains_length[i] = chains_length[current_time % num_of_ledgers];
+//  
+//        }
+     
     
         
      
