@@ -1,0 +1,46 @@
+﻿#define last_timeslot 20;
+#define num_of_ledgers 3;
+
+var current_time = 0;
+var next = 0;
+var genesis = 0;
+var ledgers[num_of_ledgers];
+//Each ledger has a copy of current chain which it is on
+var chains[num_of_ledgers] = [num_of_ledgers][last_timeslot * num_of_ledgers * 2];
+//Each block in the block pool record the previous node on its chain
+var blockpool[last_timeslot * num_of_ledgers * 2];
+var chains_length[num_of_ledgers] = [1, 1, 1];
+ 
+
+node(i) = 
+    [current_time % num_of_ledgers == i]createblock.i{
+        blockpool[next] = chains[i][chains_length - 1];
+        chains_length[i]++;
+        chains[i][chains_length - 1] = next;
+    } -> node(i)
+    []
+    [current_time % num_of_ledgers != i]update.i{
+        //Current chain length < longest chain length
+        if (chains_length[i] < chains_length[current_time % num_of_ledgers]) {
+            chains_length[i] = chains_length[current_time % num_of_ledgers];
+            chains[i] = chains[current_time % num_of_ledgers];
+        }
+    } -> node(i)
+        
+     
+    
+ticktok(i) = 
+    [i == 0 && current_time < last_timeslot]timertik.i{
+        current_time++;
+    } ->  node(i)
+    []
+    [i > 0 && current_time < last_timeslot]
+    
+system_normal = (||i:{0...last_timeslot}@(node(i)||tiktok(i)));
+#define consensus(chains_length[0] == chains_length[1] && chains_length[1] && chains_length[2] 
+    && chains[0][chains_length[0] - 1] == chains[1][chains_length[1] - 1] 
+    && chains[1][chains_length[1] - 1] == chains[2][chains_length[2] - 1]);
+
+#assert system_normal reaches consensus;
+    
+    
