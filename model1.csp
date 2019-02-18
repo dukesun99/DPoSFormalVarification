@@ -1,26 +1,33 @@
 ﻿#define last_timeslot 2;
 #define num_of_ledgers 3;
+#define honest 1;
+#define malicious -1;
 
-#alphabet node {readyfortimer, readyforothers, readyfornode};
-#alphabet timer {readyfornode, readytotick};
+#alphabet node {readyfortimer, blockcreated, readyfornext};
+#alphabet regulator {readyfornext};
+//#alphabet timer {readyfornode, readytotick};
 
 var current_time = 0;
 var next = 0;
 var genesis = 0;
-var ledgers[num_of_ledgers];
+var ledgers[num_of_ledgers] = [honest, honest, honest];
+var finished[num_of_ledgers] = [0, 0, 0];
 //Each ledger has a copy of current chain which it is on
 var chains[num_of_ledgers][last_timeslot * num_of_ledgers * 2];
 
 var chains_length[num_of_ledgers] = [1, 1, 1];
+
+channel c 0;
    
 node(i) = 
     [current_time % num_of_ledgers == i](createblock.i{
         chains_length[i] = chains_length[i] + 1;
         chains[i][chains_length[i] - 1] = next;
         next++;
-    } -> readyforothers -> readyfortimer -> timer(i))
+        finished[i] = 1;
+    } -> blockcreated -> c!i -> readyfornext -> node(i)
     []
-    [current_time % num_of_ledgers != i]readyforothers -> update.i{ 
+    [current_time % num_of_ledgers != i]blockcreated -> update.i{ 
         if (chains_length[i] < chains_length[current_time % num_of_ledgers]) {
             var counter = 0;
             var length = chains_length[current_time % num_of_ledgers];
@@ -29,19 +36,33 @@ node(i) =
                 counter++;
             }
             chains_length[i] = chains_length[current_time % num_of_ledgers];
+            finished[i] = 1;
         }
-    } -> readyfortimer -> timer(i);
+    } -> c!i -> readyfornext -> node(i));
   
 
-    
-timer(i) = 
-    [i == 0 && current_time < last_timeslot]timertik{
-        current_time++;
-    } ->  readyfornode -> node(i)
+regulator() = 
+    c?i -> (
+    [finished[0] == 1 && finished[1] == 1 && finished[2] == 1 && current_time < last_timeslot]updatetimer{
+	        finished[0] = 0;
+	        finished[1] = 0;
+	        finished[2] = 0;
+	        current_time++;
+    } -> readyfornext -> regulator()
     []
-    [i > 0 && current_time < last_timeslot]readyfornode -> node(i);
+    [finished[0] <= 0 || finished[1] <= 0 || finished[2] <= 0]recorder(i));
     
-system_normal = (||i:{0..num_of_ledgers - 1}@(node(i)));
+    
+recorder(i) = 
+    record.i{finished[i] = 1} -> regulator();
+    
+//timer() = 
+//    [current_time == 0] -> (||i:{0..num_of_ledgers - 1}@(node(i))
+//    [current_time < last_timeslot]timertik{
+//        current_time++;
+//    } ->  (||i:{0..num_of_ledgers - 1}@(node(i))
+    
+system_normal = (||i:{0..num_of_ledgers - 1}@(node(i)))||regulator();
 
 #define consensus(chains_length[0] == chains_length[1] && chains_length[1] == chains_length[2] 
     && chains[0][chains_length[0] - 1] == chains[1][chains_length[1] - 1] 
