@@ -15,6 +15,7 @@ var nextSlot = 1;
 
 var firstBlock[number_of_nodes];
 var chainLength[number_of_nodes];
+var chainValidity[number_of_nodes]; // 0 for valid, 1 for not valid
 //var finished[number_of_nodes];
 var forkChainFirstBlock[number_of_nodes];
 var forkChainLength[number_of_nodes];
@@ -32,7 +33,7 @@ node(i) =
 	} -> readytosync -> timer(i))
 	[]
 	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
-		if (chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+		if (chainValidity[globalTime % number_of_nodes] == 0 && chainLength[i] < chainLength[globalTime % number_of_nodes]) {
 			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
 			chainLength[i]++;
 		}
@@ -48,7 +49,9 @@ timer(i) =
 system_normal = (||i:{0..number_of_nodes - 1} @ (node(i)));
 
 #define allconsensus (firstBlock[0] == firstBlock[1]) && (firstBlock[1] == firstBlock[2]) && (globalTime == number_of_ticks);
+#define consensusateachtime (firstBlock[0] == firstBlock[1]) && (firstBlock[1] == firstBlock[2]);
 #assert system_normal reaches allconsensus;
+#assert system_normal |= [](increment -> X(consensusateachtime));
 
 node_forker(i) = 
 	[globalTime % number_of_nodes == i](produceblock.i{
@@ -75,9 +78,14 @@ timer_forker(i) =
 system_minorityfork = node(0) || node(1) || node_forker(2);
 #define honestconsensus (firstBlock[0] == firstBlock[1]) && (globalTime == number_of_ticks);
 #define honestwinlongestchain (firstBlock[0] == firstBlock[1]) && (chainLength[0] > chainLength[2] && chainLength[0] > forkChainLength[2]) && (globalTime == number_of_ticks);
+#define honestwinlongestchainateachtime (firstBlock[0] == firstBlock[1]) && (chainLength[0] > chainLength[2] && chainLength[0] > forkChainLength[2]);
+#define honestconsensusateachtime (firstBlock[0] == firstBlock[1]);
 #assert system_minorityfork reaches allconsensus;
 #assert system_minorityfork reaches honestconsensus;
 #assert system_minorityfork reaches honestwinlongestchain;
+#assert system_minorityfork |= [](increment -> X(consensusateachtime));
+#assert system_minorityfork |= [](increment -> X(honestwinlongestchainateachtime));
+#assert system_minorityfork |= [](increment -> X(honestconsensusateachtime));
 
 node_doubleproducer(i) = 
 	[globalTime % number_of_nodes == i](produceblock.i{
@@ -112,9 +120,14 @@ timer_doubleproducer(i) =
 		[i != 0 && globalTime < number_of_ticks] (tick -> tick -> node_doubleproducer(i));
 		
 system_doubleproduction = node(0) || node(1) || node_doubleproducer(2);
+#define forkchainsameasmainchainateachtime (forkChainFirstBlock[2] == firstBlock[2]);
 #assert system_doubleproduction reaches allconsensus;
 #assert system_doubleproduction reaches honestconsensus;
 #assert system_doubleproduction reaches honestwinlongestchain;
+#assert system_doubleproduction |= [](increment -> X(consensusateachtime));
+#assert system_doubleproduction |= [](increment -> X(honestwinlongestchainateachtime));
+#assert system_doubleproduction |= [](increment -> X(honestconsensusateachtime));
+#assert system_doubleproduction |= [](increment -> X(forkchainsameasmainchainateachtime));
 
 node_networkfragmentation(i) = 
 	[globalTime % number_of_nodes == i](produceblock.i{
@@ -140,3 +153,74 @@ timer_networkfragmentation(i) =
 		
 system_networkfragmentation = (||i:{0..number_of_nodes - 1} @ (node_networkfragmentation(i)));
 #assert system_networkfragmentation reaches allconsensus;
+#assert system_networkfragmentation |= [](increment -> X(consensusateachtime));
+
+node_maliciousblock(i) = 
+	[globalTime % number_of_nodes == i](produceblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+	} -> readytosync -> timer_maliciousblock(i))
+	[]
+	[globalTime % number_of_nodes != i](readytosync -> producemaliciousblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+		chainValidity[i] = 1;
+	} -> synchronize.i{
+		if (chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+			chainLength[i]++;
+		}
+	} -> timer_maliciousblock(i));
+
+
+
+timer_maliciousblock(i) = 
+		[i == 0 && globalTime < number_of_ticks] (tick -> increment{globalTime++;} -> tick -> node_maliciousblock(i))
+			[]
+		[i != 0 && globalTime < number_of_ticks] (tick -> tick -> node_maliciousblock(i));
+		
+system_maliciousblock = node(0) || node(1) || node_maliciousblock(2);
+
+#assert system_maliciousblock reaches allconsensus;
+#assert system_maliciousblock reaches honestconsensus;
+#assert system_maliciousblock reaches honestwinlongestchain;
+#assert system_maliciousblock |= [](increment -> X(consensusateachtime));
+#assert system_maliciousblock |= [](increment -> X(honestwinlongestchainateachtime));
+#assert system_maliciousblock |= [](increment -> X(honestconsensusateachtime));
+
+#define thehonestnode 2;
+node_majoritymalicious(i) = 
+	[globalTime % number_of_nodes == i](produceblock.i{
+		blockPool[nextSlot] = firstBlock[i];
+		firstBlock[i] = nextSlot;
+		nextSlot++;
+		chainLength[i]++;
+	} -> readytosync -> timer_majoritymalicious(i))
+	[]
+	[globalTime % number_of_nodes != i](readytosync -> synchronize.i{
+		if (globalTime % number_of_nodes != thehonestnode && chainLength[i] < chainLength[globalTime % number_of_nodes]) {
+			firstBlock[i] = firstBlock[globalTime % number_of_nodes];
+			chainLength[i]++;
+		}
+	} -> timer_majoritymalicious(i));
+
+
+
+timer_majoritymalicious(i) = 
+		[i == 0 && globalTime < number_of_ticks] (tick -> increment{globalTime++;} -> tick -> node_majoritymalicious(i))
+			[]
+		[i != 0 && globalTime < number_of_ticks] (tick -> tick -> node_majoritymalicious(i));
+
+system_majoritymalicious = node_majoritymalicious(0) || node_majoritymalicious(1) || node(2);
+#define honestwinlongestchain2 (chainLength[thehonestnode] > chainLength[0] && chainLength[thehonestnode] > chainLength[1]) && (globalTime == number_of_ticks);
+#define maliciousreachconsensus (firstBlock[0] == firstBlock[1]) && (globalTime == number_of_ticks);
+#define maliciousreachconsensusateachtime (firstBlock[0] == firstBlock[1]);
+#assert system_majoritymalicious reaches allconsensus;
+#assert system_majoritymalicious reaches honestwinlongestchain2;
+#assert system_majoritymalicious reaches maliciousreachconsensus;
+#assert system_majoritymalicious |= [](increment -> X(consensusateachtime));
+#assert system_majoritymalicious |= [](increment -> X(maliciousreachconsensusateachtime));
