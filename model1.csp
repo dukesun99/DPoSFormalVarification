@@ -1,0 +1,55 @@
+﻿#define last_timeslot 2;
+#define num_of_ledgers 3;
+
+#alphabet node {readyfortimer, readyforothers};
+#alphabet timer {readyfornode};
+
+var current_time = 0;
+var next = 0;
+var genesis = 0;
+var ledgers[num_of_ledgers];
+//Each ledger has a copy of current chain which it is on
+var chains[num_of_ledgers][last_timeslot * num_of_ledgers * 2];
+//Each block in the block pool record the previous node on its chain
+var blockpool[last_timeslot * num_of_ledgers * 2];
+var chains_length[num_of_ledgers] = [1, 1, 1];
+   
+node(i) = 
+    [current_time % num_of_ledgers == i](createblock.i{
+        blockpool[next] = chains[i][chains_length[i] - 1];
+        chains_length[i] = chains_length[1] + 1;
+        chains[i][chains_length[i] - 1] = next;
+        next++;
+    } -> readyforothers -> readyfortimer -> timer(i))
+    []
+    [current_time % num_of_ledgers != i]readyforothers -> update.i{ 
+        var counter = 0;
+        var length = chains_length[current_time % num_of_ledgers];
+        while (counter < length) {
+            chains[i][counter] = chains[current_time % num_of_ledgers][counter];
+            counter++;
+        }
+        chains_length[i] = chains_length[current_time % num_of_ledgers];
+        
+    }
+        -> readyfortimer -> timer(i);
+  
+
+    
+timer(i) = 
+    [i == 0 && current_time < last_timeslot]timertik.i{
+        current_time++;
+    } ->  readyfornode -> node(i)
+    []
+    [i > 0 && current_time < last_timeslot]readyfornode -> node(i);
+    
+system_normal = (||i:{0..num_of_ledgers - 1}@(node(i)));
+
+#define consensus(chains_length[0] == chains_length[1] && chains_length[1] == chains_length[2] 
+    && chains[0][chains_length[0] - 1] == chains[1][chains_length[1] - 1] 
+    && chains[1][chains_length[1] - 1] == chains[2][chains_length[2] - 1]
+    && current_time == last_timeslot);
+
+#assert system_normal reaches consensus;
+    
+    
