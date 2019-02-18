@@ -23,16 +23,16 @@ node(i) =
     } -> readyforothers -> readyfortimer -> timer(i))
     []
     [current_time % num_of_ledgers != i]readyforothers -> update.i{ 
-        var counter = 0;
-        var length = chains_length[current_time % num_of_ledgers];
-        while (counter < length) {
-            chains[i][counter] = chains[current_time % num_of_ledgers][counter];
-            counter++;
+        if (chains_length[i] < chains_length[current_time % num_of_ledgers]) {
+            var counter = 0;
+            var length = chains_length[current_time % num_of_ledgers];
+            while (counter < length) {
+                chains[i][counter] = chains[current_time % num_of_ledgers][counter];
+                counter++;
+            }
+            chains_length[i] = chains_length[current_time % num_of_ledgers];
         }
-        chains_length[i] = chains_length[current_time % num_of_ledgers];
-        
-    }
-        -> readyfortimer -> timer(i);
+    } -> readyfortimer -> timer(i);
   
 
     
